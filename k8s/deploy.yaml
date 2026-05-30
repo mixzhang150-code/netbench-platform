@@ -1,0 +1,487 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: netbench
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: netbench-config
+  namespace: netbench
+data:
+  NODE_ENV: "production"
+  JWT_SECRET: "CHANGE_ME_IN_PRODUCTION"
+  PING_SERVICE_URL: "http://ping-service:3001"
+  HTTP_SERVICE_URL: "http://http-service:3002"
+  SPEEDTEST_SERVICE_URL: "http://speedtest-service:3003"
+  NODE_SERVICE_URL: "http://node-service:3004"
+  USER_SERVICE_URL: "http://user-service:3005"
+  DATA_SERVICE_URL: "http://data-service:3006"
+  MONITORING_SERVICE_URL: "http://monitoring-service:3007"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: netbench-secrets
+  namespace: netbench
+type: Opaque
+stringData:
+  DB_PASSWORD: "CHANGE_ME"
+  REDIS_PASSWORD: "CHANGE_ME"
+  INFLUX_TOKEN: "CHANGE_ME"
+  RABBITMQ_PASSWORD: "CHANGE_ME"
+  JWT_SECRET: "CHANGE_ME"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: netbench
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+        - name: api-gateway
+          image: netbench/api-gateway:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: netbench-config
+            - secretRef:
+                name: netbench-secrets
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: netbench
+spec:
+  selector:
+    app: api-gateway
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ping-service
+  namespace: netbench
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ping-service
+  template:
+    metadata:
+      labels:
+        app: ping-service
+    spec:
+      containers:
+        - name: ping-service
+          image: netbench/ping-service:latest
+          ports:
+            - containerPort: 3001
+          envFrom:
+            - configMapRef:
+                name: netbench-config
+            - secretRef:
+                name: netbench-secrets
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 15
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ping-service
+  namespace: netbench
+spec:
+  selector:
+    app: ping-service
+  ports:
+    - port: 3001
+      targetPort: 3001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: http-service
+  namespace: netbench
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: http-service
+  template:
+    metadata:
+      labels:
+        app: http-service
+    spec:
+      containers:
+        - name: http-service
+          image: netbench/http-service:latest
+          ports:
+            - containerPort: 3002
+          envFrom:
+            - configMapRef:
+                name: netbench-config
+            - secretRef:
+                name: netbench-secrets
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: http-service
+  namespace: netbench
+spec:
+  selector:
+    app: http-service
+  ports:
+    - port: 3002
+      targetPort: 3002
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: speedtest-service
+  namespace: netbench
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: speedtest-service
+  template:
+    metadata:
+      labels:
+        app: speedtest-service
+    spec:
+      containers:
+        - name: speedtest-service
+          image: netbench/speedtest-service:latest
+          ports:
+            - containerPort: 3003
+          envFrom:
+            - configMapRef:
+                name: netbench-config
+            - secretRef:
+                name: netbench-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: speedtest-service
+  namespace: netbench
+spec:
+  selector:
+    app: speedtest-service
+  ports:
+    - port: 3003
+      targetPort: 3003
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node-service
+  namespace: netbench
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: node-service
+  template:
+    metadata:
+      labels:
+        app: node-service
+    spec:
+      containers:
+        - name: node-service
+          image: netbench/node-service:latest
+          ports:
+            - containerPort: 3004
+          envFrom:
+            - configMapRef:
+                name: netbench-config
+            - secretRef:
+                name: netbench-secrets
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-service
+  namespace: netbench
+spec:
+  selector:
+    app: node-service
+  ports:
+    - port: 3004
+      targetPort: 3004
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: netbench
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      containers:
+        - name: user-service
+          image: netbench/user-service:latest
+          ports:
+            - containerPort: 3005
+          envFrom:
+            - configMapRef:
+                name: netbench-config
+            - secretRef:
+                name: netbench-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: netbench
+spec:
+  selector:
+    app: user-service
+  ports:
+    - port: 3005
+      targetPort: 3005
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-service
+  namespace: netbench
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-service
+  template:
+    metadata:
+      labels:
+        app: data-service
+    spec:
+      containers:
+        - name: data-service
+          image: netbench/data-service:latest
+          ports:
+            - containerPort: 3006
+          envFrom:
+            - configMapRef:
+                name: netbench-config
+            - secretRef:
+                name: netbench-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-service
+  namespace: netbench
+spec:
+  selector:
+    app: data-service
+  ports:
+    - port: 3006
+      targetPort: 3006
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitoring-service
+  namespace: netbench
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: monitoring-service
+  template:
+    metadata:
+      labels:
+        app: monitoring-service
+    spec:
+      containers:
+        - name: monitoring-service
+          image: netbench/monitoring-service:latest
+          ports:
+            - containerPort: 3007
+          envFrom:
+            - configMapRef:
+                name: netbench-config
+            - secretRef:
+                name: netbench-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: monitoring-service
+  namespace: netbench
+spec:
+  selector:
+    app: monitoring-service
+  ports:
+    - port: 3007
+      targetPort: 3007
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: netbench
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: netbench/web:latest
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: netbench
+spec:
+  selector:
+    app: web
+  ports:
+    - port: 80
+      targetPort: 80
+  type: LoadBalancer
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: netbench-ingress
+  namespace: netbench
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/websocket-services: "api-gateway"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: netbench.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 80
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 3000
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 3000
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway-hpa
+  namespace: netbench
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

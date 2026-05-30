@@ -1,0 +1,43 @@
+{
+  "name": "netbench-platform",
+  "version": "1.0.0",
+  "description": "综合性网络测试平台 - 支持Ping、HTTP/HTTPS、网络测速及节点赞助",
+  "private": true,
+  "workspaces": [
+    "services/*",
+    "shared/*",
+    "web",
+    "node-agent"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:gateway\" \"npm run dev:ping\" \"npm run dev:http\" \"npm run dev:speedtest\" \"npm run dev:node\" \"npm run dev:user\" \"npm run dev:data\" \"npm run dev:monitor\" \"npm run dev:web\"",
+    "dev:gateway": "npm run dev --workspace=services/api-gateway",
+    "dev:ping": "npm run dev --workspace=services/ping-service",
+    "dev:http": "npm run dev --workspace=services/http-service",
+    "dev:speedtest": "npm run dev --workspace=services/speedtest-service",
+    "dev:node": "npm run dev --workspace=services/node-service",
+    "dev:user": "npm run dev --workspace=services/user-service",
+    "dev:data": "npm run dev --workspace=services/data-service",
+    "dev:monitor": "npm run dev --workspace=services/monitoring-service",
+    "dev:web": "npm run dev --workspace=web",
+    "build": "npm run build --workspaces",
+    "lint": "eslint services/ shared/ web/ node-agent/",
+    "test": "jest --coverage",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "k8s:deploy": "kubectl apply -f k8s/"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "adm-zip": "^0.5.17",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.56.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.3.3"
+  }
+}

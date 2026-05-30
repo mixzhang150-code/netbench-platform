@@ -1,0 +1,324 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: netbench-postgres
+    environment:
+      POSTGRES_DB: netbench
+      POSTGRES_USER: netbench
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-netbench_secret}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netbench"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - netbench-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: netbench-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_secret} --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_secret}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - netbench-net
+
+  influxdb:
+    image: influxdb:2.7-alpine
+    container_name: netbench-influxdb
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_PASSWORD:-influx_secret}
+      DOCKER_INFLUXDB_INIT_ORG: netbench
+      DOCKER_INFLUXDB_INIT_BUCKET: test_results
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN:-influx_token_secret}
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - netbench-net
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: netbench-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: netbench
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rabbitmq_secret}
+    ports:
+      - "45672:5672"
+      - "35672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - netbench-net
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: netbench-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      JWT_SECRET: ${JWT_SECRET:-jwt_secret_key}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379
+      PING_SERVICE_URL: http://ping-service:3001
+      HTTP_SERVICE_URL: http://http-service:3002
+      SPEEDTEST_SERVICE_URL: http://speedtest-service:3003
+      NODE_SERVICE_URL: http://node-service:3004
+      USER_SERVICE_URL: http://user-service:3005
+      DATA_SERVICE_URL: http://data-service:3006
+      ORCHESTRATOR_SERVICE_URL: http://orchestrator-service:3008
+      MONITORING_SERVICE_URL: http://monitoring-service:3007
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - netbench-net
+
+  orchestrator-service:
+    build:
+      context: .
+      dockerfile: services/orchestrator-service/Dockerfile
+    container_name: netbench-orchestrator
+    environment:
+      NODE_ENV: production
+      PORT: 3008
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379
+      PING_SERVICE_URL: http://ping-service:3001
+      HTTP_SERVICE_URL: http://http-service:3002
+      SPEEDTEST_SERVICE_URL: http://speedtest-service:3003
+      NODE_SERVICE_URL: http://node-service:3004
+      DATA_SERVICE_URL: http://data-service:3006
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-netbench_internal_token_2024}
+    depends_on:
+      redis:
+        condition: service_healthy
+      data-service:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - netbench-net
+
+  ping-service:
+    build:
+      context: .
+      dockerfile: services/ping-service/Dockerfile
+    container_name: netbench-ping
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379
+      RABBITMQ_URL: amqp://netbench:${RABBITMQ_PASSWORD:-rabbitmq_secret}@rabbitmq:5672
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-influx_token_secret}
+      INFLUX_ORG: netbench
+      INFLUX_BUCKET: test_results
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - netbench-net
+
+  http-service:
+    build:
+      context: .
+      dockerfile: services/http-service/Dockerfile
+    container_name: netbench-http
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379
+      RABBITMQ_URL: amqp://netbench:${RABBITMQ_PASSWORD:-rabbitmq_secret}@rabbitmq:5672
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-influx_token_secret}
+      INFLUX_ORG: netbench
+      INFLUX_BUCKET: test_results
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - netbench-net
+
+  speedtest-service:
+    build:
+      context: .
+      dockerfile: services/speedtest-service/Dockerfile
+    container_name: netbench-speedtest
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379
+      RABBITMQ_URL: amqp://netbench:${RABBITMQ_PASSWORD:-rabbitmq_secret}@rabbitmq:5672
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-influx_token_secret}
+      INFLUX_ORG: netbench
+      INFLUX_BUCKET: test_results
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - netbench-net
+
+  node-service:
+    build:
+      context: .
+      dockerfile: services/node-service/Dockerfile
+    container_name: netbench-node-mgr
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+      DATABASE_URL: postgresql://netbench:${DB_PASSWORD:-netbench_secret}@postgres:5432/netbench
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379
+      RABBITMQ_URL: amqp://netbench:${RABBITMQ_PASSWORD:-rabbitmq_secret}@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET:-jwt_secret_key}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-netbench_internal_token_2024}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - netbench-net
+
+  user-service:
+    build:
+      context: .
+      dockerfile: services/user-service/Dockerfile
+    container_name: netbench-user
+    environment:
+      NODE_ENV: production
+      PORT: 3005
+      DATABASE_URL: postgresql://netbench:${DB_PASSWORD:-netbench_secret}@postgres:5432/netbench
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:-jwt_secret_key}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - netbench-net
+
+  data-service:
+    build:
+      context: .
+      dockerfile: services/data-service/Dockerfile
+    container_name: netbench-data
+    environment:
+      NODE_ENV: production
+      PORT: 3006
+      DATABASE_URL: postgresql://netbench:${DB_PASSWORD:-netbench_secret}@postgres:5432/netbench
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379
+      RABBITMQ_URL: amqp://netbench:${RABBITMQ_PASSWORD:-rabbitmq_secret}@rabbitmq:5672
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-influx_token_secret}
+      INFLUX_ORG: netbench
+      INFLUX_BUCKET: test_results
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - netbench-net
+
+  monitoring-service:
+    build:
+      context: .
+      dockerfile: services/monitoring-service/Dockerfile
+    container_name: netbench-monitor
+    environment:
+      NODE_ENV: production
+      PORT: 3007
+      DATABASE_URL: postgresql://netbench:${DB_PASSWORD:-netbench_secret}@postgres:5432/netbench
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379
+      RABBITMQ_URL: amqp://netbench:${RABBITMQ_PASSWORD:-rabbitmq_secret}@rabbitmq:5672
+      PING_SERVICE_URL: http://ping-service:3001
+      HTTP_SERVICE_URL: http://http-service:3002
+      SPEEDTEST_SERVICE_URL: http://speedtest-service:3003
+      NODE_SERVICE_URL: http://node-service:3004
+      USER_SERVICE_URL: http://user-service:3005
+      DATA_SERVICE_URL: http://data-service:3006
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - netbench-net
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    container_name: netbench-web
+    ports:
+      - "8080:80"
+    depends_on:
+      - api-gateway
+    restart: unless-stopped
+    networks:
+      - netbench-net
+
+volumes:
+  postgres_data:
+  redis_data:
+  influxdb_data:
+  rabbitmq_data:
+
+networks:
+  netbench-net:
+    driver: bridge
